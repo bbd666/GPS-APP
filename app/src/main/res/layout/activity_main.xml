@@ -100,4 +100,12 @@
             android:text="130" />
     </LinearLayout>
 
+    <Switch
+        android:id="@+id/switchAutoLimit"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Limitation auto (OSM)"
+        android:textColor="#333333"
+        android:layout_marginTop="20dp" />
+
 </LinearLayout>

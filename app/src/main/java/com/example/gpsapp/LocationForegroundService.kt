@@ -30,9 +30,12 @@ class LocationForegroundService : Service() {
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
+    private lateinit var speedLimitLookup: SpeedLimitLookup
     private val toneGenerator = ToneGenerator(AudioManager.STREAM_ALARM, 100)
 
     private var speedLimit: Double = 50.0
+    private var autoModeEnabled: Boolean = false
+    @Volatile private var speedLimitLookupReady: Boolean = false
 
     private val updateLimitReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -40,11 +43,25 @@ class LocationForegroundService : Service() {
         }
     }
 
+    private val updateAutoModeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            autoModeEnabled = intent?.getBooleanExtra(EXTRA_AUTO_MODE, autoModeEnabled) ?: autoModeEnabled
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
-        speedLimit = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-            .getFloat(PREF_SPEED_LIMIT, 50f).toDouble()
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        speedLimit = prefs.getFloat(PREF_SPEED_LIMIT, 50f).toDouble()
+        autoModeEnabled = prefs.getBoolean(PREF_AUTO_MODE, false)
+
+        // La base OSM (~40 Mo) est copiée depuis les assets au premier lancement :
+        // on le fait sur un thread séparé pour ne jamais bloquer le service.
+        Thread {
+            speedLimitLookup = SpeedLimitLookup(this)
+            speedLimitLookupReady = true
+        }.start()
 
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult) {
@@ -58,6 +75,12 @@ class LocationForegroundService : Service() {
             this,
             updateLimitReceiver,
             IntentFilter(ACTION_UPDATE_LIMIT),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        ContextCompat.registerReceiver(
+            this,
+            updateAutoModeReceiver,
+            IntentFilter(ACTION_UPDATE_AUTO_MODE),
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
     }
@@ -85,13 +108,29 @@ class LocationForegroundService : Service() {
 
     private fun handleLocation(location: Location) {
         val speedInKmh = location.speed * 3.6
-        val overLimit = speedInKmh > speedLimit
 
+        var effectiveLimit = speedLimit
+        var limitSource = "Manuelle"
+
+        if (autoModeEnabled && speedLimitLookupReady) {
+            val osmLimit = speedLimitLookup.findSpeedLimitNear(location.latitude, location.longitude)
+            if (osmLimit != null) {
+                effectiveLimit = osmLimit.toDouble()
+                limitSource = "OSM"
+            } else {
+                // Pas de route reconnue à proximité : on retombe sur la dernière limite manuelle
+                limitSource = "OSM (hors zone)"
+            }
+        }
+
+        val overLimit = speedInKmh > effectiveLimit
         if (overLimit) {
             toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
         }
 
-        val notifText = String.format("%.1f km/h (limite : %.0f km/h)", speedInKmh, speedLimit)
+        val notifText = String.format(
+            "%.1f km/h (limite : %.0f km/h — %s)", speedInKmh, effectiveLimit, limitSource
+        )
         val manager = getSystemService(NotificationManager::class.java)
         manager.notify(NOTIFICATION_ID, buildNotification(notifText))
 
@@ -102,6 +141,8 @@ class LocationForegroundService : Service() {
             putExtra(EXTRA_LONGITUDE, location.longitude)
             putExtra(EXTRA_SPEED, speedInKmh)
             putExtra(EXTRA_OVER_LIMIT, overLimit)
+            putExtra(EXTRA_EFFECTIVE_LIMIT, effectiveLimit)
+            putExtra(EXTRA_LIMIT_SOURCE, limitSource)
         }
         sendBroadcast(update)
     }
@@ -142,6 +183,10 @@ class LocationForegroundService : Service() {
         fusedLocationClient.removeLocationUpdates(locationCallback)
         toneGenerator.release()
         unregisterReceiver(updateLimitReceiver)
+        unregisterReceiver(updateAutoModeReceiver)
+        if (speedLimitLookupReady) {
+            speedLimitLookup.close()
+        }
     }
 
     companion object {
@@ -151,14 +196,20 @@ class LocationForegroundService : Service() {
         const val ACTION_LOCATION_UPDATE = "com.example.gpsapp.ACTION_LOCATION_UPDATE"
         const val ACTION_UPDATE_LIMIT = "com.example.gpsapp.ACTION_UPDATE_LIMIT"
 
+        const val ACTION_UPDATE_AUTO_MODE = "com.example.gpsapp.ACTION_UPDATE_AUTO_MODE"
+
         const val EXTRA_LATITUDE = "extra_latitude"
         const val EXTRA_LONGITUDE = "extra_longitude"
         const val EXTRA_SPEED = "extra_speed"
         const val EXTRA_OVER_LIMIT = "extra_over_limit"
         const val EXTRA_SPEED_LIMIT = "extra_speed_limit"
+        const val EXTRA_AUTO_MODE = "extra_auto_mode"
+        const val EXTRA_EFFECTIVE_LIMIT = "extra_effective_limit"
+        const val EXTRA_LIMIT_SOURCE = "extra_limit_source"
 
         const val PREFS_NAME = "gps_app_prefs"
         const val PREF_SPEED_LIMIT = "pref_speed_limit"
+        const val PREF_AUTO_MODE = "pref_auto_mode"
 
         /** Met à jour la limite de vitesse à chaud (et la persiste pour le prochain démarrage du service). */
         fun updateSpeedLimit(context: Context, newLimit: Double) {
@@ -167,6 +218,17 @@ class LocationForegroundService : Service() {
             val intent = Intent(ACTION_UPDATE_LIMIT).apply {
                 setPackage(context.packageName)
                 putExtra(EXTRA_SPEED_LIMIT, newLimit)
+            }
+            context.sendBroadcast(intent)
+        }
+
+        /** Active/désactive la limitation automatique basée sur la base OSM locale. */
+        fun updateAutoMode(context: Context, enabled: Boolean) {
+            context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                .edit().putBoolean(PREF_AUTO_MODE, enabled).apply()
+            val intent = Intent(ACTION_UPDATE_AUTO_MODE).apply {
+                setPackage(context.packageName)
+                putExtra(EXTRA_AUTO_MODE, enabled)
             }
             context.sendBroadcast(intent)
         }

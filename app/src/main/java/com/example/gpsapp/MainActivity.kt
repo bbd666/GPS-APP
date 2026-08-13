@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.widget.Button
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -20,6 +21,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvCoordinates: TextView
     private lateinit var tvSpeed: TextView
     private lateinit var tvCurrentLimit: TextView
+    private lateinit var switchAutoLimit: Switch
+    private lateinit var manualLimitButtons: List<Button>
 
     private var speedLimit: Double = 50.0
 
@@ -31,6 +34,8 @@ class MainActivity : AppCompatActivity() {
             val lon = intent.getDoubleExtra(LocationForegroundService.EXTRA_LONGITUDE, 0.0)
             val speed = intent.getDoubleExtra(LocationForegroundService.EXTRA_SPEED, 0.0)
             val overLimit = intent.getBooleanExtra(LocationForegroundService.EXTRA_OVER_LIMIT, false)
+            val effectiveLimit = intent.getDoubleExtra(LocationForegroundService.EXTRA_EFFECTIVE_LIMIT, speedLimit)
+            val limitSource = intent.getStringExtra(LocationForegroundService.EXTRA_LIMIT_SOURCE) ?: "Manuelle"
 
             tvCoordinates.text = "Latitude : $lat\nLongitude : $lon"
             tvSpeed.text = String.format("%.1f km/h", speed)
@@ -38,6 +43,7 @@ class MainActivity : AppCompatActivity() {
                 if (overLimit) android.graphics.Color.RED
                 else android.graphics.Color.parseColor("#007ACC")
             )
+            tvCurrentLimit.text = "Limite : ${effectiveLimit.toInt()} km/h ($limitSource)"
         }
     }
 
@@ -72,6 +78,7 @@ class MainActivity : AppCompatActivity() {
         tvCoordinates = findViewById(R.id.tvCoordinates)
         tvSpeed = findViewById(R.id.tvSpeed)
         tvCurrentLimit = findViewById(R.id.tvCurrentLimit)
+        switchAutoLimit = findViewById(R.id.switchAutoLimit)
 
         // Initialisation de tous les boutons
         val btnLimit30: Button = findViewById(R.id.btnLimit30)
@@ -81,6 +88,7 @@ class MainActivity : AppCompatActivity() {
         val btnLimit90: Button = findViewById(R.id.btnLimit90)
         val btnLimit110: Button = findViewById(R.id.btnLimit110)
         val btnLimit130: Button = findViewById(R.id.btnLimit130)
+        manualLimitButtons = listOf(btnLimit30, btnLimit50, btnLimit70, btnLimit80, btnLimit90, btnLimit110, btnLimit130)
 
         // Configuration des actions au clic
         btnLimit30.setOnClickListener { setSpeedLimit(30.0) }
@@ -93,12 +101,31 @@ class MainActivity : AppCompatActivity() {
 
         tvCurrentLimit.text = "Limite : ${speedLimit.toInt()} km/h"
 
+        // Restaure l'état du mode auto depuis les préférences (partagées avec le service)
+        val autoModeEnabled = getSharedPreferences(LocationForegroundService.PREFS_NAME, MODE_PRIVATE)
+            .getBoolean(LocationForegroundService.PREF_AUTO_MODE, false)
+        switchAutoLimit.isChecked = autoModeEnabled
+        setManualButtonsEnabled(!autoModeEnabled)
+
+        switchAutoLimit.setOnCheckedChangeListener { _, isChecked ->
+            setManualButtonsEnabled(!isChecked)
+            LocationForegroundService.updateAutoMode(this, isChecked)
+            if (!isChecked) {
+                // Retour immédiat à la dernière limite manuelle choisie (sans attendre le prochain point GPS)
+                tvCurrentLimit.text = "Limite : ${speedLimit.toInt()} km/h (Manuelle)"
+            }
+        }
+
         checkPermissionsAndStart()
+    }
+
+    private fun setManualButtonsEnabled(enabled: Boolean) {
+        manualLimitButtons.forEach { it.isEnabled = enabled }
     }
 
     private fun setSpeedLimit(newLimit: Double) {
         speedLimit = newLimit
-        tvCurrentLimit.text = "Limite : ${newLimit.toInt()} km/h"
+        tvCurrentLimit.text = "Limite : ${newLimit.toInt()} km/h (Manuelle)"
         // Le service applique la nouvelle limite immédiatement, même s'il tourne déjà en fond
         LocationForegroundService.updateSpeedLimit(this, newLimit)
     }
