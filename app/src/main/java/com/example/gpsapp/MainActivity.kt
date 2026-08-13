@@ -36,9 +36,13 @@ class MainActivity : AppCompatActivity() {
             val lon = intent.getDoubleExtra(LocationForegroundService.EXTRA_LONGITUDE, 0.0)
             val speed = intent.getDoubleExtra(LocationForegroundService.EXTRA_SPEED, 0.0)
             val overLimit = intent.getBooleanExtra(LocationForegroundService.EXTRA_OVER_LIMIT, false)
+            val limit = intent.getDoubleExtra(LocationForegroundService.EXTRA_LIMIT, speedLimit)
+
             // Mise à jour de l'interface utilisateur
-            tvCoordinates.text = "Latitude : " + lat + "\nLongitude : " + lon
+            tvCoordinates.text = "Latitude : $lat\nLongitude : $lon"
             tvSpeed.text = String.format("%.1f km/h", speed)
+            tvCurrentLimit.text = "Limite : ${limit.toInt()} km/h"
+            
             tvSpeed.setTextColor(
                 if (overLimit) android.graphics.Color.RED
                 else android.graphics.Color.parseColor("#007ACC")

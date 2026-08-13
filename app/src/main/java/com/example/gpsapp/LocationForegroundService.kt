@@ -22,12 +22,14 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
-import java.io.FileDescriptor
+import java.io.File
+import java.io.FileOutputStream
 
 class LocationForegroundService : Service() {
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
+    private var speedLimitLookup: SpeedLimitLookup? = null
     private var speedLimit: Double = 50.0
     private var lastAlertTime: Long = 0
 
@@ -47,14 +49,20 @@ class LocationForegroundService : Service() {
                     val lat = location.latitude
                     val lon = location.longitude
 
+                    // Recherche de la limite de vitesse dans la base de données
+                    speedLimitLookup?.findSpeedLimitNear(lat, lon)?.let { newLimit ->
+                        speedLimit = newLimit.toDouble()
+                        Log.d("LocationService", "Limite de vitesse trouvée : $speedLimit km/h")
+                    }
+
                     // Conversion de la vitesse de m/s en km/h
                     val speedKmH = location.speed * 3.6
                     val overLimit = speedKmH > speedLimit
 
-                    Log.d("LocationService", "GPS : Lat \$lat, Lon lon, Vitesse speedKmH km/h")
+                    Log.d("LocationService", "GPS : Lat $lat, Lon $lon, Vitesse $speedKmH km/h")
 
                     // Envoyer instantanément les données actualisées à la MainActivity
-                    envoyerMiseAJourCoordonnees(lat, lon, speedKmH, overLimit)
+                    envoyerMiseAJourCoordonnees(lat, lon, speedKmH, overLimit, speedLimit)
 
                     if (overLimit) {
                         jouerAlerteSonore()
@@ -85,13 +93,8 @@ class LocationForegroundService : Service() {
             if (dbUriString != null) {
                 try {
                     val fileUri = Uri.parse(dbUriString)
-                    val parcelFileDescriptor = contentResolver.openFileDescriptor(fileUri, "r")
-                    if (parcelFileDescriptor != null) {
-                        val fileDescriptor = parcelFileDescriptor.fileDescriptor
-
-                        Log.d("LocationService", "Base OSM 'data OSM' connectée avec succès !")
-                        initialiserBaseOSM(fileDescriptor)
-                    }
+                    Log.d("LocationService", "Base OSM connectée avec succès !")
+                    initialiserBaseOSM(fileUri)
                 } catch (e: Exception) {
                     Log.e("LocationService", "Erreur lors de l'accès au fichier .db", e)
                 }
@@ -121,20 +124,32 @@ class LocationForegroundService : Service() {
 
     }
 
-    private fun envoyerMiseAJourCoordonnees(latitude: Double, longitude: Double, vitesse: Double, auDessusLimite: Boolean) {
+    private fun envoyerMiseAJourCoordonnees(latitude: Double, longitude: Double, vitesse: Double, auDessusLimite: Boolean, limiteActuelle: Double) {
         val intent = Intent(ACTION_LOCATION_UPDATE).apply {
             putExtra(EXTRA_LATITUDE, latitude)
             putExtra(EXTRA_LONGITUDE, longitude)
             putExtra(EXTRA_SPEED, vitesse)
             putExtra(EXTRA_OVER_LIMIT, auDessusLimite)
+            putExtra(EXTRA_LIMIT, limiteActuelle)
             setPackage(packageName) // Sécurise l'envoi uniquement au package de l'application
         }
         sendBroadcast(intent)
     }
 
-    private fun initialiserBaseOSM(fd: FileDescriptor) {
-// TODO : Injectez ce descripteur de fichier (fd) dans votre gestionnaire SQLite
-// ou votre moteur OSM pour commencer à lire le fichier de 40 Mo hors-ligne.
+    private fun initialiserBaseOSM(uri: Uri) {
+        try {
+            val localFile = File(filesDir, "external_speed_limits.db")
+            contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(localFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            speedLimitLookup?.close()
+            speedLimitLookup = SpeedLimitLookup(this, localFile.absolutePath)
+            Log.d("LocationService", "SpeedLimitLookup initialisé avec ${localFile.absolutePath}")
+        } catch (e: Exception) {
+            Log.e("LocationService", "Erreur lors de l'initialisation de SpeedLimitLookup", e)
+        }
     }
 
     private fun creerCanalNotification() {
@@ -202,6 +217,7 @@ class LocationForegroundService : Service() {
         const val EXTRA_LONGITUDE = "extra_longitude"
         const val EXTRA_SPEED = "extra_speed"
         const val EXTRA_OVER_LIMIT = "extra_over_limit"
+        const val EXTRA_LIMIT = "extra_limit"
 
         fun updateSpeedLimit(context: Context, newLimit: Double) {
             val intent = Intent(context, LocationForegroundService::class.java).apply {

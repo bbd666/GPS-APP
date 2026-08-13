@@ -14,19 +14,24 @@ import kotlin.math.sqrt
  * La base est copiée depuis les assets vers le stockage interne au premier lancement :
  * SQLite doit ouvrir un vrai fichier sur le disque, pas une entrée compressée dans l'APK.
  */
-class SpeedLimitLookup(context: Context) {
+class SpeedLimitLookup(context: Context, externalDbPath: String? = null) {
 
     private val db: SQLiteDatabase
 
     init {
-        val dbFile = context.getDatabasePath(DB_NAME)
-        if (!dbFile.exists()) {
-            dbFile.parentFile?.mkdirs()
-            context.assets.open(DB_NAME).use { input ->
-                FileOutputStream(dbFile).use { output -> input.copyTo(output) }
+        val finalPath = if (externalDbPath != null) {
+            externalDbPath
+        } else {
+            val dbFile = context.getDatabasePath(DB_NAME)
+            if (!dbFile.exists()) {
+                dbFile.parentFile?.mkdirs()
+                context.assets.open(DB_NAME).use { input ->
+                    FileOutputStream(dbFile).use { output -> input.copyTo(output) }
+                }
             }
+            dbFile.path
         }
-        db = SQLiteDatabase.openDatabase(dbFile.path, null, SQLiteDatabase.OPEN_READONLY)
+        db = SQLiteDatabase.openDatabase(finalPath, null, SQLiteDatabase.OPEN_READONLY)
     }
 
     /**
