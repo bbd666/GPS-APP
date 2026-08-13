@@ -2,7 +2,9 @@ package com.example.gpsapp
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
+import android.util.Log
 import java.io.FileOutputStream
+import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.sqrt
 
@@ -39,13 +41,19 @@ class SpeedLimitLookup(context: Context, externalDbPath: String? = null) {
      * dans un rayon de [maxDistanceMeters], ou null si rien n'a été trouvé
      * (hors zone couverte par la base, ou trop loin de toute route connue).
      */
-    fun findSpeedLimitNear(lat: Double, lon: Double, maxDistanceMeters: Double = 40.0): Int? {
+    fun findSpeedLimitNear(lat: Double, lon: Double, maxDistanceMeters: Double = 60.0): Int? {
         val cellKeys = neighboringCells(lat, lon)
         val placeholders = cellKeys.joinToString(",") { "?" }
-        val cursor = db.rawQuery(
-            "SELECT lat1, lon1, lat2, lon2, maxspeed_kmh FROM segments WHERE cell IN ($placeholders)",
-            cellKeys.toTypedArray()
-        )
+        
+        val cursor = try {
+            db.rawQuery(
+                "SELECT lat1, lon1, lat2, lon2, maxspeed_kmh FROM segments WHERE cell IN ($placeholders)",
+                cellKeys.toTypedArray()
+            )
+        } catch (e: Exception) {
+            Log.e("SpeedLimitLookup", "Erreur SQL lors de la recherche : ${e.message}")
+            return null
+        }
 
         var bestDistance = Double.MAX_VALUE
         var bestSpeed: Int? = null
@@ -60,7 +68,10 @@ class SpeedLimitLookup(context: Context, externalDbPath: String? = null) {
                 val lon1 = it.getDouble(1)
                 val lat2 = it.getDouble(2)
                 val lon2 = it.getDouble(3)
-                val maxspeed = it.getInt(4)
+                
+                // Lecture robuste du maxspeed (peut être String ou Int dans la DB)
+                val rawSpeed = it.getString(4)
+                val maxspeed = parseMaxSpeed(rawSpeed) ?: continue
 
                 val ax = (lon1 - lon) * metersPerDegLon
                 val ay = (lat1 - lat) * metersPerDegLat
@@ -75,7 +86,27 @@ class SpeedLimitLookup(context: Context, externalDbPath: String? = null) {
             }
         }
 
+        if (bestSpeed == null) {
+            Log.d("SpeedLimitLookup", "Aucun segment trouvé dans les cellules $cellKeys")
+        }
+
         return if (bestDistance <= maxDistanceMeters) bestSpeed else null
+    }
+
+    private fun parseMaxSpeed(raw: String?): Int? {
+        if (raw == null) return null
+        val normalized = raw.lowercase().trim()
+        
+        // Extraction du premier groupe de chiffres
+        val match = Regex("(\\d+)").find(normalized) ?: return null
+        val value = match.value.toIntOrNull() ?: return null
+        
+        // Conversion si l'unité est en mph
+        return if (normalized.contains("mph")) {
+            (value * 1.60934).toInt()
+        } else {
+            value
+        }
     }
 
     /**
@@ -88,7 +119,8 @@ class SpeedLimitLookup(context: Context, externalDbPath: String? = null) {
             for (dLon in -1..1) {
                 val cLat = roundTo2(lat + dLat * 0.01)
                 val cLon = roundTo2(lon + dLon * 0.01)
-                cells.add("${cLat}_${cLon}")
+                // Utilisation d'un formatage fixe à 2 décimales pour correspondre à la DB
+                cells.add(String.format(Locale.US, "%.2f_%.2f", cLat, cLon))
             }
         }
         return cells.distinct()
