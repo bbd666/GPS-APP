@@ -60,6 +60,13 @@
             android:layout_marginEnd="8dp" />
 
         <Button
+            android:id="@+id/btnLimit70"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="70"
+            android:layout_marginEnd="8dp" />
+
+        <Button
             android:id="@+id/btnLimit80"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
