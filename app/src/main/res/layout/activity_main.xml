@@ -75,5 +75,15 @@
             android:backgroundTint="#607D8B"
             android:textColor="#FFFFFF" />
 
+        <TextView
+            android:id="@+id/tvDbName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:text="Aucune base chargée"
+            android:textColor="#999999"
+            android:textSize="12sp"
+            android:layout_marginTop="8dp"/>
+
     </LinearLayout>
 </ScrollView>

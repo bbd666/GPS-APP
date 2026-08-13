@@ -24,6 +24,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvCoordinates: TextView
     private lateinit var tvSpeed: TextView
     private lateinit var tvCurrentLimit: TextView
+    private lateinit var tvDbName: TextView
 
     private var speedLimit: Double = 50.0
 
@@ -72,26 +73,26 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Lanceur système pour ouvrir l'explorateur de fichiers et sélectionner le dossier "data SOM"
-    private val openDocumentTreeLauncher = registerForActivityResult(
-        ActivityResultContracts.OpenDocumentTree()
+    // Lanceur système pour ouvrir l'explorateur de fichiers et sélectionner un fichier .db
+    private val openFileLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         if (uri != null) {
-// Persister les droits d'accès pour que l'application s'en souvienne au prochain démarrage
-            val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            // Persister les droits d'accès pour que l'application s'en souvienne au prochain démarrage
+            val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION
             contentResolver.takePersistableUriPermission(uri, takeFlags)
-            // Sauvegarder l'URI d'accès dans les préférences
+            
+            // Sauvegarder l'URI du fichier dans les préférences
             getSharedPreferences("GPS_APP_PREFS", Context.MODE_PRIVATE)
                 .edit()
-                .putString("FOLDER_URI", uri.toString())
+                .putString("FILE_URI", uri.toString())
                 .apply()
 
-            // Lancer la validation du fichier et démarrer l'application
-            verifierFichierEtDemarrer(uri)
+            // Démarrer le service avec ce fichier
+            initialiserAvecFichier(uri)
         } else {
-            Toast.makeText(this, "Sélection du dossier annulée.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Sélection du fichier annulée.", Toast.LENGTH_LONG).show()
         }
-
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -102,6 +103,7 @@ class MainActivity : AppCompatActivity() {
         tvCoordinates = findViewById(R.id.tvCoordinates)
         tvSpeed = findViewById(R.id.tvSpeed)
         tvCurrentLimit = findViewById(R.id.tvCurrentLimit)
+        tvDbName = findViewById(R.id.tvDbName)
 
         val btnLimit30: Button = findViewById(R.id.btnLimit30)
         val btnLimit50: Button = findViewById(R.id.btnLimit50)
@@ -137,15 +139,14 @@ class MainActivity : AppCompatActivity() {
         LocationForegroundService.updateSpeedLimit(this, newLimit)
     }
 
-    // Fonction pour oublier l'ancien dossier et réouvrir l'explorateur SAF
+    // Fonction pour oublier l'ancien fichier et réouvrir l'explorateur SAF
     private fun changerDeDossierBase() {
         getSharedPreferences("GPS_APP_PREFS", Context.MODE_PRIVATE)
             .edit()
-            .remove("FOLDER_URI")
+            .remove("FILE_URI")
             .apply()
-        Toast.makeText(this, "Sélectionnez votre nouveau dossier 'data SOM'", Toast.LENGTH_LONG).show()
-        openDocumentTreeLauncher.launch(null)
-
+        Toast.makeText(this, "Sélectionnez votre fichier .db", Toast.LENGTH_LONG).show()
+        openFileLauncher.launch(arrayOf("*/*"))
     }
 
     private fun checkPermissionsAndStart() {
@@ -181,43 +182,36 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Étape de sécurité : Vérifier si l'URI du dossier personnalisé externe est déjà connue
+    // Étape de sécurité : Vérifier si l'URI du fichier est déjà connue
     private fun checkDbAndStartService() {
         val prefs = getSharedPreferences("GPS_APP_PREFS", Context.MODE_PRIVATE)
-        val savedUriString = prefs.getString("FOLDER_URI", null)
+        val savedUriString = prefs.getString("FILE_URI", null)
         if (savedUriString != null) {
-            val folderUri = Uri.parse(savedUriString)
+            val fileUri = Uri.parse(savedUriString)
             // S'assurer que les droits d'accès persistants sont toujours valides
-            val hasPermission = contentResolver.persistedUriPermissions.any { it.uri == folderUri }
+            val hasPermission = contentResolver.persistedUriPermissions.any { it.uri == fileUri }
             if (hasPermission) {
-                verifierFichierEtDemarrer(folderUri)
+                initialiserAvecFichier(fileUri)
                 return
             }
         }
 
-// Si aucun dossier n'est enregistré, ouvrir l'invite système pour cibler "data SOM"
-        Toast.makeText(this, "Veuillez sélectionner votre dossier 'data SOM'", Toast.LENGTH_LONG).show()
-        openDocumentTreeLauncher.launch(null)
-
+        // Si aucun fichier n'est enregistré, ouvrir l'invite système
+        Toast.makeText(this, "Veuillez sélectionner votre fichier .db", Toast.LENGTH_LONG).show()
+        openFileLauncher.launch(arrayOf("*/*"))
     }
 
-    private fun verifierFichierEtDemarrer(folderUri: Uri) {
-        val pickedDir = DocumentFile.fromTreeUri(this, folderUri)
-// Recherche du fichier openstreetmap.db dans le dossier lié à l'URI
-        val dbFile = pickedDir?.findFile("openstreetmap.db")
-        if (dbFile != null && dbFile.exists()) {
-            Log.d("GPS-APP", "Fichier openstreetmap.db trouvé avec succès !")
-            startTrackingService(dbFile.uri.toString())
+    private fun initialiserAvecFichier(fileUri: Uri) {
+        val documentFile = DocumentFile.fromSingleUri(this, fileUri)
+        if (documentFile != null && documentFile.exists()) {
+            Log.d("GPS-APP", "Fichier ${documentFile.name} chargé avec succès !")
+            tvDbName.text = "Base chargée : ${documentFile.name}"
+            startTrackingService(fileUri.toString())
         } else {
-            Log.e("GPS-APP", "openstreetmap.db introuvable dans ce dossier.")
-            Toast.makeText(
-                this,
-                "Fichier openstreetmap.db manquant. Veuillez sélectionner le bon dossier.",
-                Toast.LENGTH_LONG
-            ).show()
-            openDocumentTreeLauncher.launch(null)
+            Log.e("GPS-APP", "Fichier introuvable.")
+            Toast.makeText(this, "Fichier introuvable. Veuillez le sélectionner à nouveau.", Toast.LENGTH_LONG).show()
+            openFileLauncher.launch(arrayOf("*/*"))
         }
-
     }
 
     private fun startTrackingService(fileUriString: String) {

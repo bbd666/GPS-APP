@@ -6,6 +6,9 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.MediaPlayer
+import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
@@ -26,6 +29,7 @@ class LocationForegroundService : Service() {
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
     private var speedLimit: Double = 50.0
+    private var lastAlertTime: Long = 0
 
     override fun onBind(intent: Intent?): IBinder? {
         return null
@@ -51,6 +55,10 @@ class LocationForegroundService : Service() {
 
                     // Envoyer instantanément les données actualisées à la MainActivity
                     envoyerMiseAJourCoordonnees(lat, lon, speedKmH, overLimit)
+
+                    if (overLimit) {
+                        jouerAlerteSonore()
+                    }
 
                     // Mettre à jour le texte de la notification persistante
                     mettreAJourNotification(speedKmH)
@@ -153,6 +161,30 @@ class LocationForegroundService : Service() {
     private fun mettreAJourNotification(vitesse: Double) {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.notify(NOTIFICATION_ID, générerNotification(vitesse))
+    }
+
+    private fun jouerAlerteSonore() {
+        val maintenant = System.currentTimeMillis()
+        if (maintenant - lastAlertTime < 5000) return // Intervalle de 5 secondes
+        lastAlertTime = maintenant
+
+        try {
+            val alerteUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            MediaPlayer().apply {
+                setDataSource(this@LocationForegroundService, alerteUri)
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                prepare()
+                start()
+                setOnCompletionListener { it.release() }
+            }
+        } catch (e: Exception) {
+            Log.e("LocationService", "Erreur lors de la lecture du son", e)
+        }
     }
 
     override fun onDestroy() {
