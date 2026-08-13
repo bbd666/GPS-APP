@@ -25,6 +25,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvSpeed: TextView
     private lateinit var tvCurrentLimit: TextView
     private lateinit var tvDbName: TextView
+    private lateinit var viewOsmIndicator: android.view.View
+    private lateinit var btnActivateOsm: Button
 
     private var speedLimit: Double = 50.0
 
@@ -37,11 +39,21 @@ class MainActivity : AppCompatActivity() {
             val speed = intent.getDoubleExtra(LocationForegroundService.EXTRA_SPEED, 0.0)
             val overLimit = intent.getBooleanExtra(LocationForegroundService.EXTRA_OVER_LIMIT, false)
             val limit = intent.getDoubleExtra(LocationForegroundService.EXTRA_LIMIT, speedLimit)
+            val osmActive = intent.getBooleanExtra(LocationForegroundService.EXTRA_OSM_ACTIVE, true)
 
             // Mise à jour de l'interface utilisateur
             tvCoordinates.text = "Latitude : $lat\nLongitude : $lon"
             tvSpeed.text = String.format("%.1f km/h", speed)
             tvCurrentLimit.text = "Limite : ${limit.toInt()} km/h"
+
+            // Mise à jour du voyant OSM
+            if (osmActive) {
+                viewOsmIndicator.setBackgroundColor(android.graphics.Color.RED)
+                btnActivateOsm.visibility = android.view.View.GONE
+            } else {
+                viewOsmIndicator.setBackgroundColor(android.graphics.Color.parseColor("#CCCCCC"))
+                btnActivateOsm.visibility = android.view.View.VISIBLE
+            }
             
             tvSpeed.setTextColor(
                 if (overLimit) android.graphics.Color.RED
@@ -108,6 +120,8 @@ class MainActivity : AppCompatActivity() {
         tvSpeed = findViewById(R.id.tvSpeed)
         tvCurrentLimit = findViewById(R.id.tvCurrentLimit)
         tvDbName = findViewById(R.id.tvDbName)
+        viewOsmIndicator = findViewById(R.id.viewOsmIndicator)
+        btnActivateOsm = findViewById(R.id.btnActivateOsm)
 
         val btnLimit30: Button = findViewById(R.id.btnLimit30)
         val btnLimit50: Button = findViewById(R.id.btnLimit50)
@@ -129,6 +143,11 @@ class MainActivity : AppCompatActivity() {
 
 // Configuration de l'action de clic du bouton d'externalisation
         btnChangeDatabase.setOnClickListener { changerDeDossierBase() }
+
+        btnActivateOsm.setOnClickListener {
+            LocationForegroundService.activateOsmMode(this)
+            Toast.makeText(this, "Mode OSM réactivé", Toast.LENGTH_SHORT).show()
+        }
 
         tvCurrentLimit.text = "Limite : " + speedLimit.toInt() + " km/h"
 

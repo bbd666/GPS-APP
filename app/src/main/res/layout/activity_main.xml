@@ -22,15 +22,38 @@
             android:textSize="48sp"
             android:textStyle="bold" />
 
-        <TextView
-            android:id="@+id/tvCurrentLimit"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
             android:gravity="center"
-            android:text="Limite : 50 km/h"
-            android:textColor="#555555"
-            android:textSize="20sp" />
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp">
+
+            <View
+                android:id="@+id/viewOsmIndicator"
+                android:layout_width="12dp"
+                android:layout_height="12dp"
+                android:layout_marginEnd="8dp"
+                android:background="#CCCCCC" />
+
+            <TextView
+                android:id="@+id/tvCurrentLimit"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Limite : 50 km/h"
+                android:textColor="#555555"
+                android:textSize="20sp" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/btnActivateOsm"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:layout_marginTop="8dp"
+            android:text="Réactiver mode OSM"
+            android:visibility="gone"
+            android:textSize="12sp" />
 
         <TextView
             android:id="@+id/tvCoordinates"
