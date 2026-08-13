@@ -1,111 +1,79 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:gravity="center"
-    android:padding="24dp"
-    android:background="#F5F5F5">
-
-    <TextView
-        android:id="@+id/tvCoordinates"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Recherche des coordonnées..."
-        android:textSize="18sp"
-        android:textColor="#333333"
-        android:gravity="center"
-        android:layout_marginBottom="16dp" />
-
-    <TextView
-        android:id="@+id/tvCurrentLimit"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Limite : 50 km/h"
-        android:textSize="16sp"
-        android:textStyle="bold"
-        android:textColor="#555555"
-        android:layout_marginBottom="16dp" />
-
-    <TextView
-        android:id="@+id/tvSpeed"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="0.0 km/h"
-        android:textSize="48sp"
-        android:textStyle="bold"
-        android:textColor="#007ACC"
-        android:gravity="center"
-        android:layout_marginBottom="32dp" />
+    android:fillViewport="true"
+    android:background="#F4F6F9">
 
     <LinearLayout
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center"
-        android:layout_marginBottom="12dp">
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:id="@+id/tvSpeed"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:gravity="center"
+            android:text="0.0 km/h"
+            android:textColor="#007ACC"
+            android:textSize="48sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvCurrentLimit"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:text="Limite : 50 km/h"
+            android:textColor="#555555"
+            android:textSize="20sp" />
+
+        <TextView
+            android:id="@+id/tvCoordinates"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:gravity="center"
+            android:text="Latitude : 0.0\nLongitude : 0.0"
+            android:textColor="#333333"
+            android:textSize="16sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            android:layout_marginBottom="8dp"
+            android:text="Définir la limite manuelle :"
+            android:textColor="#777777"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <Button android:id="@+id/btnLimit30" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="4dp" android:text="Zone 30 km/h" />
+        <Button android:id="@+id/btnLimit50" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="4dp" android:text="Agglomération 50 km/h" />
+        <Button android:id="@+id/btnLimit70" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="4dp" android:text="Route 70 km/h" />
+        <Button android:id="@+id/btnLimit80" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="4dp" android:text="Route 80 km/h" />
+        <Button android:id="@+id/btnLimit90" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="4dp" android:text="Route 90 km/h" />
+        <Button android:id="@+id/btnLimit110" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="4dp" android:text="Voie Rapide 110 km/h" />
+        <Button android:id="@+id/btnLimit130" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="24dp" android:text="Autoroute 130 km/h" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#DDDDDD"
+            android:layout_marginBottom="16dp" />
 
         <Button
-            android:id="@+id/btnLimit30"
-            android:layout_width="wrap_content"
+            android:id="@+id/btnChangeDatabase"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="30"
-            android:layout_marginEnd="8dp" />
+            android:layout_marginBottom="16dp"
+            android:text="Changer de base"
+            android:backgroundTint="#607D8B"
+            android:textColor="#FFFFFF" />
 
-        <Button
-            android:id="@+id/btnLimit50"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="50"
-            android:layout_marginEnd="8dp" />
-
-        <Button
-            android:id="@+id/btnLimit70"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="70"
-            android:layout_marginEnd="8dp" />
-
-        <Button
-            android:id="@+id/btnLimit80"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="80" />
     </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center">
-
-        <Button
-            android:id="@+id/btnLimit90"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="90"
-            android:layout_marginEnd="8dp" />
-
-        <Button
-            android:id="@+id/btnLimit110"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="110"
-            android:layout_marginEnd="8dp" />
-
-        <Button
-            android:id="@+id/btnLimit130"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="130" />
-    </LinearLayout>
-
-    <Switch
-        android:id="@+id/switchAutoLimit"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Limitation auto (OSM)"
-        android:textColor="#333333"
-        android:layout_marginTop="20dp" />
-
-</LinearLayout>
+</ScrollView>

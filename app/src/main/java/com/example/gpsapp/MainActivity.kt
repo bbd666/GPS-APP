@@ -6,27 +6,28 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.widget.Button
-import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.documentfile.provider.DocumentFile
+import com.example.gpsapp.R
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var tvCoordinates: TextView
     private lateinit var tvSpeed: TextView
     private lateinit var tvCurrentLimit: TextView
-    private lateinit var switchAutoLimit: Switch
-    private lateinit var manualLimitButtons: List<Button>
 
     private var speedLimit: Double = 50.0
 
-    // Reçoit les mises à jour envoyées par LocationForegroundService pendant que l'Activity est visible
+    // Récepteur de messages (Broadcast) pour intercepter la position envoyée par le Service
     private val locationUpdateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             intent ?: return
@@ -34,32 +35,31 @@ class MainActivity : AppCompatActivity() {
             val lon = intent.getDoubleExtra(LocationForegroundService.EXTRA_LONGITUDE, 0.0)
             val speed = intent.getDoubleExtra(LocationForegroundService.EXTRA_SPEED, 0.0)
             val overLimit = intent.getBooleanExtra(LocationForegroundService.EXTRA_OVER_LIMIT, false)
-            val effectiveLimit = intent.getDoubleExtra(LocationForegroundService.EXTRA_EFFECTIVE_LIMIT, speedLimit)
-            val limitSource = intent.getStringExtra(LocationForegroundService.EXTRA_LIMIT_SOURCE) ?: "Manuelle"
-
-            tvCoordinates.text = "Latitude : $lat\nLongitude : $lon"
+            // Mise à jour de l'interface utilisateur
+            tvCoordinates.text = "Latitude : " + lat + "\nLongitude : " + lon
             tvSpeed.text = String.format("%.1f km/h", speed)
             tvSpeed.setTextColor(
                 if (overLimit) android.graphics.Color.RED
                 else android.graphics.Color.parseColor("#007ACC")
             )
-            tvCurrentLimit.text = "Limite : ${effectiveLimit.toInt()} km/h ($limitSource)"
         }
+
     }
 
+    // Gestionnaire des demandes de permissions de base (Localisation + Notifications)
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val fineLocationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
         if (fineLocationGranted) {
             requestBackgroundLocationIfNeeded()
-            startTrackingService()
+            checkDbAndStartService()
         } else {
             Toast.makeText(this, "Permission GPS refusée.", Toast.LENGTH_LONG).show()
         }
     }
 
-    // La permission "arrière-plan" doit être demandée séparément (exigence du système)
+    // Gestionnaire de la permission spécifique pour la localisation en arrière-plan
     private val requestBackgroundPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -72,15 +72,37 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Lanceur système pour ouvrir l'explorateur de fichiers et sélectionner le dossier "data SOM"
+    private val openDocumentTreeLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        if (uri != null) {
+// Persister les droits d'accès pour que l'application s'en souvienne au prochain démarrage
+            val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            contentResolver.takePersistableUriPermission(uri, takeFlags)
+            // Sauvegarder l'URI d'accès dans les préférences
+            getSharedPreferences("GPS_APP_PREFS", Context.MODE_PRIVATE)
+                .edit()
+                .putString("FOLDER_URI", uri.toString())
+                .apply()
+
+            // Lancer la validation du fichier et démarrer l'application
+            verifierFichierEtDemarrer(uri)
+        } else {
+            Toast.makeText(this, "Sélection du dossier annulée.", Toast.LENGTH_LONG).show()
+        }
+
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+// Liaison avec le fichier activity_main.xml
         setContentView(R.layout.activity_main)
+// Liaison des éléments graphiques (Views) avec forçage de la classe R du projet
         tvCoordinates = findViewById(R.id.tvCoordinates)
         tvSpeed = findViewById(R.id.tvSpeed)
         tvCurrentLimit = findViewById(R.id.tvCurrentLimit)
-        switchAutoLimit = findViewById(R.id.switchAutoLimit)
 
-        // Initialisation de tous les boutons
         val btnLimit30: Button = findViewById(R.id.btnLimit30)
         val btnLimit50: Button = findViewById(R.id.btnLimit50)
         val btnLimit70: Button = findViewById(R.id.btnLimit70)
@@ -88,9 +110,9 @@ class MainActivity : AppCompatActivity() {
         val btnLimit90: Button = findViewById(R.id.btnLimit90)
         val btnLimit110: Button = findViewById(R.id.btnLimit110)
         val btnLimit130: Button = findViewById(R.id.btnLimit130)
-        manualLimitButtons = listOf(btnLimit30, btnLimit50, btnLimit70, btnLimit80, btnLimit90, btnLimit110, btnLimit130)
+        val btnChangeDatabase: Button = findViewById(R.id.btnChangeDatabase)
 
-        // Configuration des actions au clic
+// Assignation des boutons de limites de vitesse
         btnLimit30.setOnClickListener { setSpeedLimit(30.0) }
         btnLimit50.setOnClickListener { setSpeedLimit(50.0) }
         btnLimit70.setOnClickListener { setSpeedLimit(70.0) }
@@ -99,41 +121,36 @@ class MainActivity : AppCompatActivity() {
         btnLimit110.setOnClickListener { setSpeedLimit(110.0) }
         btnLimit130.setOnClickListener { setSpeedLimit(130.0) }
 
-        tvCurrentLimit.text = "Limite : ${speedLimit.toInt()} km/h"
+// Configuration de l'action de clic du bouton d'externalisation
+        btnChangeDatabase.setOnClickListener { changerDeDossierBase() }
 
-        // Restaure l'état du mode auto depuis les préférences (partagées avec le service)
-        val autoModeEnabled = getSharedPreferences(LocationForegroundService.PREFS_NAME, MODE_PRIVATE)
-            .getBoolean(LocationForegroundService.PREF_AUTO_MODE, false)
-        switchAutoLimit.isChecked = autoModeEnabled
-        setManualButtonsEnabled(!autoModeEnabled)
+        tvCurrentLimit.text = "Limite : " + speedLimit.toInt() + " km/h"
 
-        switchAutoLimit.setOnCheckedChangeListener { _, isChecked ->
-            setManualButtonsEnabled(!isChecked)
-            LocationForegroundService.updateAutoMode(this, isChecked)
-            if (!isChecked) {
-                // Retour immédiat à la dernière limite manuelle choisie (sans attendre le prochain point GPS)
-                tvCurrentLimit.text = "Limite : ${speedLimit.toInt()} km/h (Manuelle)"
-            }
-        }
-
+// Lancement de la chaîne de vérification des permissions
         checkPermissionsAndStart()
-    }
 
-    private fun setManualButtonsEnabled(enabled: Boolean) {
-        manualLimitButtons.forEach { it.isEnabled = enabled }
     }
 
     private fun setSpeedLimit(newLimit: Double) {
         speedLimit = newLimit
-        tvCurrentLimit.text = "Limite : ${newLimit.toInt()} km/h (Manuelle)"
-        // Le service applique la nouvelle limite immédiatement, même s'il tourne déjà en fond
+        tvCurrentLimit.text = "Limite : " + newLimit.toInt() + " km/h"
         LocationForegroundService.updateSpeedLimit(this, newLimit)
+    }
+
+    // Fonction pour oublier l'ancien dossier et réouvrir l'explorateur SAF
+    private fun changerDeDossierBase() {
+        getSharedPreferences("GPS_APP_PREFS", Context.MODE_PRIVATE)
+            .edit()
+            .remove("FOLDER_URI")
+            .apply()
+        Toast.makeText(this, "Sélectionnez votre nouveau dossier 'data SOM'", Toast.LENGTH_LONG).show()
+        openDocumentTreeLauncher.launch(null)
+
     }
 
     private fun checkPermissionsAndStart() {
         val fineLocation = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
         val coarseLocation = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
-
         val permissionsToRequest = mutableListOf<String>()
         if (fineLocation != PackageManager.PERMISSION_GRANTED) {
             permissionsToRequest.add(Manifest.permission.ACCESS_FINE_LOCATION)
@@ -149,10 +166,11 @@ class MainActivity : AppCompatActivity() {
 
         if (permissionsToRequest.isEmpty()) {
             requestBackgroundLocationIfNeeded()
-            startTrackingService()
+            checkDbAndStartService()
         } else {
             requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
         }
+
     }
 
     private fun requestBackgroundLocationIfNeeded() {
@@ -163,13 +181,55 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun startTrackingService() {
-        val intent = Intent(this, LocationForegroundService::class.java)
+    // Étape de sécurité : Vérifier si l'URI du dossier personnalisé externe est déjà connue
+    private fun checkDbAndStartService() {
+        val prefs = getSharedPreferences("GPS_APP_PREFS", Context.MODE_PRIVATE)
+        val savedUriString = prefs.getString("FOLDER_URI", null)
+        if (savedUriString != null) {
+            val folderUri = Uri.parse(savedUriString)
+            // S'assurer que les droits d'accès persistants sont toujours valides
+            val hasPermission = contentResolver.persistedUriPermissions.any { it.uri == folderUri }
+            if (hasPermission) {
+                verifierFichierEtDemarrer(folderUri)
+                return
+            }
+        }
+
+// Si aucun dossier n'est enregistré, ouvrir l'invite système pour cibler "data SOM"
+        Toast.makeText(this, "Veuillez sélectionner votre dossier 'data SOM'", Toast.LENGTH_LONG).show()
+        openDocumentTreeLauncher.launch(null)
+
+    }
+
+    private fun verifierFichierEtDemarrer(folderUri: Uri) {
+        val pickedDir = DocumentFile.fromTreeUri(this, folderUri)
+// Recherche du fichier openstreetmap.db dans le dossier lié à l'URI
+        val dbFile = pickedDir?.findFile("openstreetmap.db")
+        if (dbFile != null && dbFile.exists()) {
+            Log.d("GPS-APP", "Fichier openstreetmap.db trouvé avec succès !")
+            startTrackingService(dbFile.uri.toString())
+        } else {
+            Log.e("GPS-APP", "openstreetmap.db introuvable dans ce dossier.")
+            Toast.makeText(
+                this,
+                "Fichier openstreetmap.db manquant. Veuillez sélectionner le bon dossier.",
+                Toast.LENGTH_LONG
+            ).show()
+            openDocumentTreeLauncher.launch(null)
+        }
+
+    }
+
+    private fun startTrackingService(fileUriString: String) {
+        val intent = Intent(this, LocationForegroundService::class.java).apply {
+            putExtra("EXTRA_DB_URI", fileUriString)
+        }
         ContextCompat.startForegroundService(this, intent)
     }
 
     override fun onResume() {
         super.onResume()
+        // Enregistrement du récepteur de données GPS
         ContextCompat.registerReceiver(
             this,
             locationUpdateReceiver,
@@ -180,7 +240,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
+        // Désactivation du récepteur pour éviter les fuites de mémoire
         unregisterReceiver(locationUpdateReceiver)
-        // Le service continue de tourner en fond : on ne l'arrête pas ici.
     }
 }
