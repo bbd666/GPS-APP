@@ -102,11 +102,24 @@ class LocationForegroundService : Service() {
             // Intercepter l'action pour réactiver OSM
             if (intent.action == ACTION_ACTIVATE_OSM) {
                 isOsmModeActive = true
-                Log.d("LocationService", "Mode OSM réactivé")
+                speedLimit = defaultSpeed
+                Log.d("LocationService", "Mode OSM réactivé, reset à la vitesse par défaut : $speedLimit km/h")
             }
 
-            // Récupérer la vitesse par défaut arbitrale
-            defaultSpeed = intent.getDoubleExtra("EXTRA_DEFAULT_SPEED", 50.0)
+            // Intercepter l'action de mise à jour de la vitesse par défaut
+            if (intent.action == ACTION_UPDATE_DEFAULT_SPEED) {
+                defaultSpeed = intent.getDoubleExtra(EXTRA_DEFAULT_SPEED, 50.0)
+                if (isOsmModeActive) {
+                    speedLimit = defaultSpeed
+                }
+                Log.d("LocationService", "Nouvelle vitesse par défaut appliquée : $defaultSpeed km/h")
+            }
+
+            // Récupérer la vitesse par défaut arbitrale au démarrage
+            if (intent.hasExtra(EXTRA_DEFAULT_SPEED)) {
+                defaultSpeed = intent.getDoubleExtra(EXTRA_DEFAULT_SPEED, 50.0)
+                if (isOsmModeActive) speedLimit = defaultSpeed
+            }
 
             // Récupérer l'URI de la base .db transmise par MainActivity
             val dbUriString = intent.getStringExtra("EXTRA_DB_URI")
@@ -245,7 +258,9 @@ class LocationForegroundService : Service() {
 
         const val ACTION_UPDATE_LIMIT = "com.example.gpsapp.UPDATE_LIMIT"
         const val ACTION_ACTIVATE_OSM = "com.example.gpsapp.ACTIVATE_OSM"
+        const val ACTION_UPDATE_DEFAULT_SPEED = "com.example.gpsapp.UPDATE_DEFAULT_SPEED"
         const val EXTRA_SPEED_LIMIT = "EXTRA_SPEED_LIMIT"
+        const val EXTRA_DEFAULT_SPEED = "EXTRA_DEFAULT_SPEED"
 
         fun updateSpeedLimit(context: Context, newLimit: Double) {
             val intent = Intent(context, LocationForegroundService::class.java).apply {
@@ -258,6 +273,14 @@ class LocationForegroundService : Service() {
         fun activateOsmMode(context: Context) {
             val intent = Intent(context, LocationForegroundService::class.java).apply {
                 action = ACTION_ACTIVATE_OSM
+            }
+            ContextCompat.startForegroundService(context, intent)
+        }
+
+        fun updateDefaultSpeed(context: Context, newDefaultSpeed: Double) {
+            val intent = Intent(context, LocationForegroundService::class.java).apply {
+                action = ACTION_UPDATE_DEFAULT_SPEED
+                putExtra(EXTRA_DEFAULT_SPEED, newDefaultSpeed)
             }
             ContextCompat.startForegroundService(context, intent)
         }

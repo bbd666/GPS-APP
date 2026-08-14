@@ -26,6 +26,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvCurrentLimit: TextView
     private lateinit var tvStatusInfo: TextView
     private lateinit var tvDbName: TextView
+    private lateinit var etDefaultSpeed: android.widget.EditText
     private lateinit var viewOsmIndicator: android.view.View
     private lateinit var btnActivateOsm: Button
 
@@ -94,9 +95,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Lanceur système pour ouvrir l'explorateur et sélectionner le dossier contenant les bases et config.txt
-    private val openFolderLauncher = registerForActivityResult(
-        ActivityResultContracts.OpenDocumentTree()
+    // Lanceur système pour ouvrir l'explorateur de fichiers et sélectionner un fichier .db
+    private val openFileLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         if (uri != null) {
             val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -104,12 +105,12 @@ class MainActivity : AppCompatActivity() {
             
             getSharedPreferences("GPS_APP_PREFS", Context.MODE_PRIVATE)
                 .edit()
-                .putString("FOLDER_URI", uri.toString())
+                .putString("FILE_URI", uri.toString())
                 .apply()
 
-            initialiserAvecDossier(uri)
+            initialiserAvecFichier(uri)
         } else {
-            Toast.makeText(this, "Sélection annulée.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Sélection du fichier annulée.", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -123,6 +124,7 @@ class MainActivity : AppCompatActivity() {
         tvCurrentLimit = findViewById(R.id.tvCurrentLimit)
         tvStatusInfo = findViewById(R.id.tvStatusInfo)
         tvDbName = findViewById(R.id.tvDbName)
+        etDefaultSpeed = findViewById(R.id.etDefaultSpeed)
         viewOsmIndicator = findViewById(R.id.viewOsmIndicator)
         btnActivateOsm = findViewById(R.id.btnActivateOsm)
 
@@ -154,11 +156,36 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnActivateOsm.setOnClickListener {
+            val defaultS = getSharedPreferences("GPS_APP_PREFS", Context.MODE_PRIVATE)
+                .getFloat("DEFAULT_SPEED", 50.0f).toDouble()
+            speedLimit = defaultS
+            tvCurrentLimit.text = "Limite : ${speedLimit.toInt()} km/h"
+
             LocationForegroundService.activateOsmMode(this)
             Toast.makeText(this, "Mode OSM réactivé", Toast.LENGTH_SHORT).show()
         }
 
-        tvCurrentLimit.text = "Limite : " + speedLimit.toInt() + " km/h"
+        // Charger la vitesse par défaut sauvegardée et initialiser la limite
+        val prefs = getSharedPreferences("GPS_APP_PREFS", Context.MODE_PRIVATE)
+        val savedDefaultSpeed = prefs.getFloat("DEFAULT_SPEED", 50.0f).toDouble()
+        speedLimit = savedDefaultSpeed
+        etDefaultSpeed.setText(savedDefaultSpeed.toInt().toString())
+        tvCurrentLimit.text = "Limite : ${speedLimit.toInt()} km/h"
+
+        // Mettre à jour la vitesse par défaut quand l'utilisateur change la valeur
+        etDefaultSpeed.addTextChangedListener(object : android.text.TextWatcher {
+            override fun afterTextChanged(s: android.text.Editable?) {
+                val speed = s.toString().toDoubleOrNull() ?: 50.0
+                getSharedPreferences("GPS_APP_PREFS", Context.MODE_PRIVATE)
+                    .edit()
+                    .putFloat("DEFAULT_SPEED", speed.toFloat())
+                    .apply()
+                // Notifier le service du changement
+                LocationForegroundService.updateDefaultSpeed(this@MainActivity, speed)
+            }
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+        })
 
         checkPermissionsAndStart()
     }
@@ -201,57 +228,42 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Fonction pour oublier l'ancien dossier et réouvrir l'explorateur
+    // Fonction pour oublier l'ancien fichier et réouvrir l'explorateur
     private fun changerDeDossierBase() {
         getSharedPreferences("GPS_APP_PREFS", Context.MODE_PRIVATE)
             .edit()
-            .remove("FOLDER_URI")
+            .remove("FILE_URI")
             .apply()
-        Toast.makeText(this, "Sélectionnez votre dossier OSM", Toast.LENGTH_LONG).show()
-        openFolderLauncher.launch(null)
+        Toast.makeText(this, "Sélectionnez votre fichier .db", Toast.LENGTH_LONG).show()
+        openFileLauncher.launch(arrayOf("*/*"))
     }
 
     private fun checkDbAndStartService() {
         val prefs = getSharedPreferences("GPS_APP_PREFS", Context.MODE_PRIVATE)
-        val savedUriString = prefs.getString("FOLDER_URI", null)
+        val savedUriString = prefs.getString("FILE_URI", null)
+        
         if (savedUriString != null) {
-            val folderUri = Uri.parse(savedUriString)
-            val hasPermission = contentResolver.persistedUriPermissions.any { it.uri == folderUri }
+            val fileUri = Uri.parse(savedUriString)
+            val hasPermission = contentResolver.persistedUriPermissions.any { it.uri == fileUri }
             if (hasPermission) {
-                initialiserAvecDossier(folderUri)
+                initialiserAvecFichier(fileUri)
                 return
             }
         }
-        Toast.makeText(this, "Veuillez sélectionner votre dossier OSM", Toast.LENGTH_LONG).show()
-        openFolderLauncher.launch(null)
+        Toast.makeText(this, "Veuillez sélectionner votre fichier .db", Toast.LENGTH_LONG).show()
+        openFileLauncher.launch(arrayOf("*/*"))
     }
 
-    private fun initialiserAvecDossier(folderUri: Uri) {
-        val rootDir = DocumentFile.fromTreeUri(this, folderUri) ?: return
-        val dbFile = rootDir.findFile("openstreetmap.db") ?: rootDir.listFiles().find { it.name?.endsWith(".db") == true }
-        
-        if (dbFile != null && dbFile.exists()) {
-            tvDbName.text = "Base : ${dbFile.name}"
-            
-            // Chercher config.txt
-            val configFile = rootDir.findFile("config.txt")
-            var defaultSpeed = 50.0
-            if (configFile != null && configFile.exists()) {
-                try {
-                    contentResolver.openInputStream(configFile.uri)?.use { input ->
-                        val content = input.bufferedReader().readText().trim()
-                        defaultSpeed = content.toDoubleOrNull() ?: 50.0
-                        Log.d("GPS-APP", "Vitesse par défaut chargée depuis config.txt : $defaultSpeed")
-                    }
-                } catch (e: Exception) {
-                    Log.e("GPS-APP", "Erreur lecture config.txt", e)
-                }
-            }
-
-            startTrackingService(dbFile.uri.toString(), defaultSpeed)
+    private fun initialiserAvecFichier(fileUri: Uri) {
+        val documentFile = DocumentFile.fromSingleUri(this, fileUri)
+        if (documentFile != null && documentFile.exists()) {
+            tvDbName.text = "Base : ${documentFile.name}"
+            val defaultSpeed = getSharedPreferences("GPS_APP_PREFS", Context.MODE_PRIVATE)
+                .getFloat("DEFAULT_SPEED", 50.0f).toDouble()
+            startTrackingService(fileUri.toString(), defaultSpeed)
         } else {
-            Toast.makeText(this, "Aucun fichier .db trouvé dans ce dossier.", Toast.LENGTH_LONG).show()
-            openFolderLauncher.launch(null)
+            Toast.makeText(this, "Fichier introuvable.", Toast.LENGTH_LONG).show()
+            openFileLauncher.launch(arrayOf("*/*"))
         }
     }
 
