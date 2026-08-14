@@ -131,6 +131,7 @@ class MainActivity : AppCompatActivity() {
         val btnLimit110: Button = findViewById(R.id.btnLimit110)
         val btnLimit130: Button = findViewById(R.id.btnLimit130)
         val btnChangeDatabase: Button = findViewById(R.id.btnChangeDatabase)
+        val btnStopApp: Button = findViewById(R.id.btnStopApp)
 
 // Assignation des boutons de limites de vitesse
         btnLimit30.setOnClickListener { setSpeedLimit(30.0) }
@@ -143,6 +144,11 @@ class MainActivity : AppCompatActivity() {
 
 // Configuration de l'action de clic du bouton d'externalisation
         btnChangeDatabase.setOnClickListener { changerDeDossierBase() }
+
+        btnStopApp.setOnClickListener {
+            stopService(Intent(this, LocationForegroundService::class.java))
+            finish()
+        }
 
         btnActivateOsm.setOnClickListener {
             LocationForegroundService.activateOsmMode(this)
