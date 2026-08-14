@@ -31,6 +31,7 @@ class LocationForegroundService : Service() {
     private lateinit var locationCallback: LocationCallback
     private var speedLimitLookup: SpeedLimitLookup? = null
     private var speedLimit: Double = 50.0
+    private var defaultSpeed: Double = 50.0
     private var isOsmModeActive: Boolean = true
     private var lastAlertTime: Long = 0
 
@@ -51,14 +52,16 @@ class LocationForegroundService : Service() {
                     val lon = location.longitude
 
                     // Recherche de la limite de vitesse dans la base de données (seulement si mode OSM actif)
+                    var limitFound = false
                     if (isOsmModeActive) {
                         val newLimit = speedLimitLookup?.findSpeedLimitNear(lat, lon)
-                        speedLimit = newLimit?.toDouble() ?: 50.0
-                        
                         if (newLimit != null) {
+                            speedLimit = newLimit.toDouble()
+                            limitFound = true
                             Log.d("LocationService", "Limite de vitesse trouvée (OSM) : $speedLimit km/h")
                         } else {
-                            Log.d("LocationService", "Limite non trouvée (OSM), 50 km/h par défaut")
+                            speedLimit = defaultSpeed
+                            Log.d("LocationService", "Limite non trouvée (OSM), $speedLimit km/h par défaut")
                         }
                     }
 
@@ -69,7 +72,7 @@ class LocationForegroundService : Service() {
                     Log.d("LocationService", "GPS : Lat $lat, Lon $lon, Vitesse $speedKmH km/h")
 
                     // Envoyer instantanément les données actualisées à la MainActivity
-                    envoyerMiseAJourCoordonnees(lat, lon, speedKmH, overLimit, speedLimit, isOsmModeActive)
+                    envoyerMiseAJourCoordonnees(lat, lon, speedKmH, overLimit, speedLimit, isOsmModeActive, limitFound)
 
                     if (overLimit) {
                         jouerAlerteSonore()
@@ -101,6 +104,9 @@ class LocationForegroundService : Service() {
                 isOsmModeActive = true
                 Log.d("LocationService", "Mode OSM réactivé")
             }
+
+            // Récupérer la vitesse par défaut arbitrale
+            defaultSpeed = intent.getDoubleExtra("EXTRA_DEFAULT_SPEED", 50.0)
 
             // Récupérer l'URI de la base .db transmise par MainActivity
             val dbUriString = intent.getStringExtra("EXTRA_DB_URI")
@@ -138,7 +144,7 @@ class LocationForegroundService : Service() {
 
     }
 
-    private fun envoyerMiseAJourCoordonnees(latitude: Double, longitude: Double, vitesse: Double, auDessusLimite: Boolean, limiteActuelle: Double, osmActif: Boolean) {
+    private fun envoyerMiseAJourCoordonnees(latitude: Double, longitude: Double, vitesse: Double, auDessusLimite: Boolean, limiteActuelle: Double, osmActif: Boolean, limitFound: Boolean) {
         val intent = Intent(ACTION_LOCATION_UPDATE).apply {
             putExtra(EXTRA_LATITUDE, latitude)
             putExtra(EXTRA_LONGITUDE, longitude)
@@ -146,6 +152,7 @@ class LocationForegroundService : Service() {
             putExtra(EXTRA_OVER_LIMIT, auDessusLimite)
             putExtra(EXTRA_LIMIT, limiteActuelle)
             putExtra(EXTRA_OSM_ACTIVE, osmActif)
+            putExtra(EXTRA_LIMIT_FOUND, limitFound)
             setPackage(packageName) // Sécurise l'envoi uniquement au package de l'application
         }
         sendBroadcast(intent)
@@ -234,6 +241,7 @@ class LocationForegroundService : Service() {
         const val EXTRA_OVER_LIMIT = "extra_over_limit"
         const val EXTRA_LIMIT = "extra_limit"
         const val EXTRA_OSM_ACTIVE = "extra_osm_active"
+        const val EXTRA_LIMIT_FOUND = "extra_limit_found"
 
         const val ACTION_UPDATE_LIMIT = "com.example.gpsapp.UPDATE_LIMIT"
         const val ACTION_ACTIVATE_OSM = "com.example.gpsapp.ACTIVATE_OSM"

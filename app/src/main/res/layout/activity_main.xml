@@ -45,6 +45,17 @@
                 android:textSize="20sp" />
         </LinearLayout>
 
+        <TextView
+            android:id="@+id/tvStatusInfo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:text="limitation inconnue"
+            android:textColor="#FF9800"
+            android:textSize="12sp"
+            android:visibility="gone"
+            android:layout_marginTop="2dp" />
+
         <Button
             android:id="@+id/btnActivateOsm"
             android:layout_width="wrap_content"
