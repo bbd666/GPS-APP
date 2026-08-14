@@ -52,9 +52,13 @@ class LocationForegroundService : Service() {
 
                     // Recherche de la limite de vitesse dans la base de données (seulement si mode OSM actif)
                     if (isOsmModeActive) {
-                        speedLimitLookup?.findSpeedLimitNear(lat, lon)?.let { newLimit ->
-                            speedLimit = newLimit.toDouble()
+                        val newLimit = speedLimitLookup?.findSpeedLimitNear(lat, lon)
+                        speedLimit = newLimit?.toDouble() ?: 50.0
+                        
+                        if (newLimit != null) {
                             Log.d("LocationService", "Limite de vitesse trouvée (OSM) : $speedLimit km/h")
+                        } else {
+                            Log.d("LocationService", "Limite non trouvée (OSM), 50 km/h par défaut")
                         }
                     }
 
